@@ -36,6 +36,13 @@ export async function downloadImage(imageId: string): Promise<Blob> {
   return data;
 }
 
+export async function streamImage(imageId: string): Promise<string> {
+  const { data } = await apiClient.get<Blob>(`/api/images/${imageId}/view`, {
+    responseType: 'blob',
+  });
+  return URL.createObjectURL(data);
+}
+
 export async function deleteImage(imageId: string): Promise<void> {
   await apiClient.delete(`/api/images/${imageId}`);
 }

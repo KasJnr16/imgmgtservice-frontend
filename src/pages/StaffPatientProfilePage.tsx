@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
 import { getUserRole } from '../utils/authStorage';
 import { getPatient, PatientResponseDTO } from '../services/patients';
-import { downloadImage, getImagesByPatient, MedicalImageDTO } from '../services/images';
+import { downloadImage, getImagesByPatient, MedicalImageDTO, streamImage } from '../services/images';
 import { getMedicalStaffNameMap, getStaffDisplayName, StaffNameMap, getMedicalStaff, MedicalStaffResponseDTO } from '../services/medicalStaff';
 import {
   CreateDiagnosisDTO,
@@ -78,6 +78,7 @@ export default function StaffPatientProfilePage() {
   const [loadingRadiologists, setLoadingRadiologists] = useState(false);
   const [statusUpdates, setStatusUpdates] = useState<Record<string, { updating: boolean; showActions: boolean }>>({});
   const [patientNameMap, setPatientNameMap] = useState<Record<string, string>>({});
+  const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
 
   const [staffNameMap, setStaffNameMap] = useState<StaffNameMap>({});
 
@@ -471,6 +472,20 @@ export default function StaffPatientProfilePage() {
     try {
       const data = await getImagesByPatient(patientId);
       setImages(data);
+      
+      // Preload image URLs
+      const urls: Record<string, string> = {};
+      for (const img of data) {
+        if (img.id) {
+          try {
+            const url = await streamImage(img.id);
+            urls[img.id] = url;
+          } catch (err) {
+            console.error(`Failed to stream image ${img.id}:`, err);
+          }
+        }
+      }
+      setImageUrls(urls);
     } catch (err) {
       showError(getErrorMessage(err, 'Failed to load patient images'));
     } finally {
@@ -823,7 +838,7 @@ export default function StaffPatientProfilePage() {
               boxShadow: '0 4px 16px rgba(15, 23, 42, 0.04)',
             }}
           >
-            <div style={{ fontWeight: 900, color: '#0f172a', marginBottom: 10 }}>Quick Actions</div>
+            <div style={{ fontWeight: 900, color: '#0f172a', marginBottom: 10 }}>Quick Action</div>
             <div style={{ display: 'grid', gap: 10 }}>
               <button
                 type="button"
@@ -833,7 +848,7 @@ export default function StaffPatientProfilePage() {
                     loadImages();
                     return;
                   }
-                  showInfo('Images view is available to Doctors on assigned patients.');
+                  showInfo('Treatment view is available to Doctors on assigned patients.');
                 }}
                 style={{
                   padding: '10px 12px',
@@ -845,51 +860,7 @@ export default function StaffPatientProfilePage() {
                   textAlign: 'left',
                 }}
               >
-                View Images
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (isDoctor) {
-                    setTab('clinical');
-                    loadReports();
-                    return;
-                  }
-                  showInfo('Reports view is available to Doctors on assigned patients.');
-                }}
-                style={{
-                  padding: '10px 12px',
-                  borderRadius: 10,
-                  border: '1px solid #e2e8f0',
-                  background: '#f8fafc',
-                  cursor: 'pointer',
-                  fontWeight: 800,
-                  textAlign: 'left',
-                }}
-              >
-                View Reports
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (isDoctor) {
-                    setTab('clinical');
-                    loadDiagnoses();
-                    return;
-                  }
-                  showInfo('Diagnoses view is available to Doctors on assigned patients.');
-                }}
-                style={{
-                  padding: '10px 12px',
-                  borderRadius: 10,
-                  border: '1px solid #e2e8f0',
-                  background: '#f8fafc',
-                  cursor: 'pointer',
-                  fontWeight: 800,
-                  textAlign: 'left',
-                }}
-              >
-                View Diagnoses
+                Treat Patient
               </button>
             </div>
           </div>
@@ -977,71 +948,46 @@ export default function StaffPatientProfilePage() {
                         border: '1px solid #e2e8f0'
                       }}
                     >
-                      {img.id ? (
-                        <>
-                          <img
-                            src={`http://localhost:4000/api/images/${img.id}/view`}
-                            alt={img.imageType || 'Medical Image'}
-                            style={{
-                              width: '100%',
-                              height: '100%',
-                              objectFit: 'cover',
-                              borderRadius: 8,
-                              opacity: 0
-                            }}
-                            onLoad={(e) => {
-                              console.log(`Image loaded successfully: ${img.id}`);
-                              e.currentTarget.style.opacity = '1';
-                            }}
-                            onError={(e) => {
-                              console.error(`Failed to load image: ${img.id}`);
-                              // Try alternative endpoints
-                              const alternativeUrls = [
-                                `http://localhost:4000/api/images/${img.id}/view`,
-                                `http://localhost:4000/api/images/${img.id}`,
-                                `http://localhost:4000/images/${img.id}`,
-                                `http://localhost:4000/uploads/${img.id}`,
-                              ];
-                              
-                              let attemptCount = 0;
-                              const tryAlternativeUrl = () => {
-                                if (attemptCount < alternativeUrls.length) {
-                                  const newSrc = alternativeUrls[attemptCount];
-                                  console.log(`Trying alternative URL: ${newSrc}`);
-                                  e.currentTarget.src = newSrc;
-                                  attemptCount++;
-                                } else {
-                                  // All attempts failed, show placeholder
-                                  const parent = e.currentTarget.parentElement;
-                                  if (parent) {
-                                    parent.innerHTML = `
-                                      <div style="
-                                        width: 100%;
-                                        height: 100%;
-                                        display: flex;
-                                        flex-direction: column;
-                                        align-items: center;
-                                        justify-content: center;
-                                        background: #e2e8f0;
-                                        border-radius: 8;
-                                        color: #64748b;
-                                        font-size: 14px;
-                                        font-weight: 600;
-                                      ">
-                                        <div style="font-size: 32px; margin-bottom: 8px;">📷</div>
-                                        <div>Image not available</div>
-                                        <div style="font-size: 12px; margin-top: 4px; color: #94a3b8;">ID: ${img.id}</div>
-                                        <div style="font-size: 11px; margin-top: 8px; color: #ef4444;">Backend service check needed</div>
-                                      </div>
-                                    `;
-                                  }
-                                }
-                              };
-                              
-                              tryAlternativeUrl();
-                            }}
-                          />
-                        </>
+                      {img.id && imageUrls[img.id] ? (
+                        <img
+                          src={imageUrls[img.id]}
+                          alt={img.imageType || 'Medical Image'}
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover',
+                            borderRadius: 8,
+                          }}
+                          onLoad={() => {
+                            console.log(`StaffPatientProfilePage - Image loaded successfully: ${img.id}`);
+                          }}
+                          onError={(e) => {
+                            console.error(`StaffPatientProfilePage - Failed to load image: ${img.id}`);
+                            // Show placeholder on error
+                            const parent = e.currentTarget.parentElement;
+                            if (parent) {
+                              parent.innerHTML = `
+                                <div style="
+                                  width: 100%;
+                                  height: 100%;
+                                  display: flex;
+                                  flex-direction: column;
+                                  align-items: center;
+                                  justify-content: center;
+                                  background: #e2e8f0;
+                                  border-radius: 8;
+                                  color: #64748b;
+                                  font-size: 14px;
+                                  font-weight: 600;
+                                ">
+                                  <div style="font-size: 32px; margin-bottom: 8px;">📷</div>
+                                  <div>Image not available</div>
+                                  <div style="font-size: 12px; margin-top: 4px; color: #94a3b8;">ID: ${img.id}</div>
+                                </div>
+                              `;
+                            }
+                          }}
+                        />
                       ) : (
                         <div style={{
                           width: '100%',
@@ -1058,8 +1004,10 @@ export default function StaffPatientProfilePage() {
                           fontWeight: 600,
                         }}>
                           <div style={{ fontSize: 32, marginBottom: 8 }}>📷</div>
-                          <div>Image not available</div>
-                          <div style={{ fontSize: 12, marginTop: 4, color: '#94a3b8' }}>No image ID</div>
+                          <div>{img.id ? 'Loading image...' : 'Image not available'}</div>
+                          <div style={{ fontSize: 12, marginTop: 4, color: '#94a3b8' }}>
+                            {img.id ? `ID: ${img.id.slice(0, 8)}...` : 'No image ID'}
+                          </div>
                         </div>
                       )}
                     </div>

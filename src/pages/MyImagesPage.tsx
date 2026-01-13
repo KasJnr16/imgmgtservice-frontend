@@ -5,7 +5,7 @@ import { getToken, getUserRole } from '../utils/authStorage';
 import LoadingSpinner from '../components/LoadingSpinner';
 import Toast from '../components/Toast';
 import { useToast } from '../hooks/useToast';
-import { downloadImage, getImagesByPatient, MedicalImageDTO } from '../services/images';
+import { downloadImage, getImagesByPatient, MedicalImageDTO, streamImage } from '../services/images';
 
 export default function MyImagesPage() {
   const navigate = useNavigate();
@@ -15,6 +15,7 @@ export default function MyImagesPage() {
   const [images, setImages] = useState<MedicalImageDTO[]>([]);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
 
   function getErrorMessage(err: unknown, fallback: string): string {
     if (axios.isAxiosError(err)) {
@@ -61,6 +62,20 @@ export default function MyImagesPage() {
 
       const data = await getImagesByPatient(patientId);
       setImages(data);
+      
+      // Preload image URLs
+      const urls: Record<string, string> = {};
+      for (const img of data) {
+        if (img.id) {
+          try {
+            const url = await streamImage(img.id);
+            urls[img.id] = url;
+          } catch (err) {
+            console.error(`Failed to stream image ${img.id}:`, err);
+          }
+        }
+      }
+      setImageUrls(urls);
     } catch (err) {
       showError(getErrorMessage(err, 'Failed to load images'));
     } finally {
@@ -228,70 +243,46 @@ export default function MyImagesPage() {
                   position: 'relative',
                 }}
               >
-                {img.id ? (
-                  <>
-                    <img
-                      src={`http://localhost:4000/api/images/${img.id}/view`}
-                      alt={img.imageType || 'Medical Image'}
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover',
-                        borderRadius: 8,
-                        opacity: 0
-                      }}
-                      onLoad={(e) => {
-                        console.log(`MyImagesPage - Image loaded successfully: ${img.id}`);
-                        e.currentTarget.style.opacity = '1';
-                      }}
-                      onError={(e) => {
-                        console.error(`MyImagesPage - Failed to load image: ${img.id}`);
-                        // Try alternative endpoints
-                        const alternativeUrls = [
-                          `http://localhost:4000/api/images/${img.id}/view`,
-                          `http://localhost:4000/api/images/${img.id}`,
-                          `http://localhost:4000/images/${img.id}`,
-                          `http://localhost:4000/uploads/${img.id}`,
-                        ];
-                        
-                        let attemptCount = 0;
-                        const tryAlternativeUrl = () => {
-                          if (attemptCount < alternativeUrls.length) {
-                            const newSrc = alternativeUrls[attemptCount];
-                            console.log(`MyImagesPage - Trying alternative URL: ${newSrc}`);
-                            e.currentTarget.src = newSrc;
-                            attemptCount++;
-                          } else {
-                            // All attempts failed, show placeholder
-                            const parent = e.currentTarget.parentElement;
-                            if (parent) {
-                              parent.innerHTML = `
-                                <div style="
-                                  width: 100%;
-                                  height: 100%;
-                                  display: flex;
-                                  flex-direction: column;
-                                  align-items: center;
-                                  justify-content: center;
-                                  background: #e2e8f0;
-                                  border-radius: 8;
-                                  color: #64748b;
-                                  font-size: 14px;
-                                  font-weight: 600;
-                                ">
-                                  <div style="font-size: 32px; margin-bottom: 8px;">🖼️</div>
-                                  <div>Image not available</div>
-                                  <div style="font-size: 12px; margin-top: 4px; color: #94a3b8;">ID: ${img.id}</div>
-                                </div>
-                              `;
-                            }
-                          }
-                        };
-                        
-                        tryAlternativeUrl();
-                      }}
-                    />
-                  </>
+                {img.id && imageUrls[img.id] ? (
+                  <img
+                    src={imageUrls[img.id]}
+                    alt={img.imageType || 'Medical Image'}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      borderRadius: 8,
+                    }}
+                    onLoad={() => {
+                      console.log(`MyImagesPage - Image loaded successfully: ${img.id}`);
+                    }}
+                    onError={(e) => {
+                      console.error(`MyImagesPage - Failed to load image: ${img.id}`);
+                      // Show placeholder on error
+                      const parent = e.currentTarget.parentElement;
+                      if (parent) {
+                        parent.innerHTML = `
+                          <div style="
+                            width: 100%;
+                            height: 100%;
+                            display: flex;
+                            flex-direction: column;
+                            align-items: center;
+                            justify-content: center;
+                            background: #e2e8f0;
+                            border-radius: 8;
+                            color: #64748b;
+                            font-size: 14px;
+                            font-weight: 600;
+                          ">
+                            <div style="font-size: 32px; margin-bottom: 8px;">🖼️</div>
+                            <div>Image not available</div>
+                            <div style="font-size: 12px; margin-top: 4px; color: #94a3b8;">ID: ${img.id}</div>
+                          </div>
+                        `;
+                      }
+                    }}
+                  />
                 ) : (
                   <div style={{
                     width: '100%',
@@ -308,8 +299,10 @@ export default function MyImagesPage() {
                     fontWeight: 600,
                   }}>
                     <div style={{ fontSize: 32, marginBottom: 8 }}>🖼️</div>
-                    <div>Image not available</div>
-                    <div style={{ fontSize: 12, marginTop: 4, color: '#94a3b8' }}>No image ID</div>
+                    <div>{img.id ? 'Loading image...' : 'Image not available'}</div>
+                    <div style={{ fontSize: 12, marginTop: 4, color: '#94a3b8' }}>
+                      {img.id ? `ID: ${img.id.slice(0, 8)}...` : 'No image ID'}
+                    </div>
                   </div>
                 )}
               </div>

@@ -78,6 +78,7 @@ export default function BillingPage() {
       console.log('Loading billing charges for userId:', userId);
       const chargesData = await getBillingCharges(userId);
       console.log('Billing charges response:', chargesData);
+      console.log('Sample charge data:', chargesData[0]);
       setCharges(chargesData);
       
       // Load outstanding bills
@@ -130,11 +131,29 @@ export default function BillingPage() {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
+    if (!dateString) return 'Invalid Date';
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return 'Invalid Date';
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      });
+    } catch {
+      return 'Invalid Date';
+    }
+  };
+
+  const formatTime = (dateString: string) => {
+    if (!dateString) return 'Invalid Time';
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return 'Invalid Time';
+      return date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return 'Invalid Time';
+    }
   };
 
   const formatCurrency = (amount: number) => {
@@ -346,7 +365,7 @@ export default function BillingPage() {
                   </div>
                   {charge.paid && (
                     <div style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>
-                      Paid on {formatDate(charge.createdAt)} at {new Date(charge.createdAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                      Paid on: {charge.paidAt ? formatDate(charge.paidAt) : charge.createdAt ? formatDate(charge.createdAt) : 'Date not available'}
                     </div>
                   )}
                 </div>

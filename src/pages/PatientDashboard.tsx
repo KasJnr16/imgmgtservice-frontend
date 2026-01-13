@@ -5,6 +5,7 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import Toast from '../components/Toast';
 import { useToast } from '../hooks/useToast';
 import { scanAppointmentService, ScanAppointmentDTO } from '../services/analytics';
+import { getMedicalStaffNameMap, StaffNameMap } from '../services/medicalStaff';
 
 export default function PatientDashboard() {
   const navigate = useNavigate();
@@ -15,6 +16,7 @@ export default function PatientDashboard() {
   const [loading, setLoading] = useState(true);
   const [scanAppointments, setScanAppointments] = useState<ScanAppointmentDTO[]>([]);
   const [appointmentsLoading, setAppointmentsLoading] = useState(false);
+  const [staffNameMap, setStaffNameMap] = useState<StaffNameMap>({});
 
   useEffect(() => {
     if (role !== 'PATIENT') {
@@ -42,11 +44,32 @@ export default function PatientDashboard() {
     }
   }, [role, navigate]);
 
+  const ensureStaffNames = async (appointments: ScanAppointmentDTO[]) => {
+    const staffIds = appointments
+      .map(a => [a.doctorId, a.radiologistId].filter((id): id is string => Boolean(id)))
+      .flat();
+    
+    const unique = Array.from(new Set(staffIds));
+    if (unique.length === 0) return;
+
+    const missing = unique.filter((id) => !staffNameMap[id]);
+    if (missing.length === 0) return;
+
+    try {
+      const map = await getMedicalStaffNameMap(missing);
+      if (Object.keys(map).length === 0) return;
+      setStaffNameMap((prev) => ({ ...prev, ...map }));
+    } catch {
+      // best-effort only
+    }
+  };
+
   const loadScanAppointments = async (userId: string) => {
     setAppointmentsLoading(true);
     try {
       const appointments = await scanAppointmentService.getAppointmentsForPatient(userId);
       setScanAppointments(appointments);
+      await ensureStaffNames(appointments);
     } catch (err) {
       showError('Failed to load scan appointments');
     } finally {
@@ -298,11 +321,11 @@ export default function PatientDashboard() {
                     
                     <div style={{ color: '#64748b', fontSize: 14, marginBottom: 8 }}>
                       Doctor: <span style={{ fontWeight: 700, color: '#0f172a' }}>
-                        {appointment.doctorName || 'Assigned Doctor'}
+                        {staffNameMap[appointment.doctorId] || appointment.doctorName || 'Assigned Doctor'}
                       </span>
                       {appointment.radiologistId && (
                         <span> • Radiologist: <span style={{ fontWeight: 700, color: '#0f172a' }}>
-                          {appointment.radiologistName || 'Assigned Radiologist'}
+                          {staffNameMap[appointment.radiologistId] || appointment.radiologistName || 'Assigned Radiologist'}
                         </span></span>
                       )}
                     </div>

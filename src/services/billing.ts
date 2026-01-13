@@ -15,6 +15,7 @@ export interface BillingDTO {
   paid: boolean;
   description: string;
   createdAt: string;
+  paidAt?: string;
 }
 
 export interface BillingAccountDTO {
