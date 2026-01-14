@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "../../.."
+		},
+		{
+			"path": "../../../../../Desktop/Programming/java/ImgMgtSys/analytics-service"
+		},
+		{
+			"path": "../../../../../Desktop/Programming/java/ImgMgtSys/billing-service"
+		},
+		{
+			"path": "../../../../../Desktop/Programming/java/ImgMgtSys/image-service"
+		}
+	],
+	"settings": {}
+}
